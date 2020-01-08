@@ -1,0 +1,181 @@
+
+#include <LiquidCrystal.h>
+
+const int numRows = 4;        // 20 x 4 LCD display
+const int numCols = 20;
+                              // These pins can be changed for the LCD
+const int rs = 7, en = 6, d4 = 5, d5 = 4, d6 = 10, d7 = 2;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+
+                              // These pins can be changed for the Speed control
+int SpeedSensorElec = A3;     //  select the input pin for the Electrical Speed potentiometer
+int SpeedSensorPetrol = A2;   //  select the input pin for the Petrol Speed potentiometer
+
+                         // These pins are hardwired in the motor shield
+int CurrentSensorElec = A0;   //  input pin for the Electrical Motor Current (not used)
+int CurrentSensorPetrol = A1; //  input pin for the Petrol Motor Current (not used)
+int ElecDir = 12;             //  output pin for the Electrical Direction
+int PetrolDir = 13;           //  output pin for the Petrol Direction
+int ElecSpeed = 3;            //  output pin for the Electrical Speed 
+int PetrolSpeed = 11;         //  output pin for the Petrol Speed
+int ElecBrake = 9;            //  output pin for the Electrical Brake
+int PetrolBrake = 8;          //  output pin for the Petrol Brake
+
+int ElecInputSpeed = 0;       //  variable to store the value coming from the Electrial Speed sensor
+int ElecMotorSpeed = 0;       //  variable to store the value coming from the Electrial Motor sensor
+int ElecMotorSpeedForwards = 0;
+int ElecMotorSpeedReverse = 0;
+int PetrolInputSpeed = 0;     //  variable to store the value coming from the Petrol Speed sensor
+int PetrolMotorSpeed = 0;     //  variable to store the value coming from the Petrol Motor sensor
+int PetrolRoadSpeed = 0;
+int ElecRoadSpeedFor = 0;
+int ElecRoadSpeedRev = 0;
+int RoadSpeedVal = 0;          // Value for Road Speed
+
+int RingGearTeeth = 65;       // number of teeth on Ring Gear
+int SunGearTeeth = 35;        // number of teeth on Sun Gear
+
+int CurrentSensorElecVal;
+int CurrentSensorPetrolVal;
+int SpeedSensorElecVal;
+int SpeedSensorPetrolVal;
+
+
+void setup() 
+{
+  Serial.begin(9600);
+
+  pinMode(SpeedSensorElec, INPUT);
+  pinMode(SpeedSensorPetrol, INPUT);
+  pinMode(CurrentSensorPetrol, OUTPUT); // not used
+  pinMode(CurrentSensorElec, OUTPUT);   // not used
+  pinMode(ElecDir, OUTPUT);
+  pinMode(PetrolDir, OUTPUT); 
+  pinMode(ElecSpeed, OUTPUT);
+  pinMode(PetrolSpeed, OUTPUT); 
+  pinMode(ElecBrake, OUTPUT);
+  pinMode(PetrolBrake, OUTPUT);
+    
+  lcd.begin(numCols, numRows);// set up the LCD's number of columns and rows:
+  
+  lcd.setCursor(0,0);
+  lcd.print("Hybrid Transmission "); 
+  lcd.setCursor(0, 1);
+  lcd.print("Electrial ");
+  lcd.setCursor(15,1);
+  lcd.print("RPM");
+  lcd.setCursor(0, 2);
+  lcd.print("Petrol");
+  lcd.setCursor(15,2);
+  lcd.print("RPM");
+  lcd.setCursor(0, 3);
+  lcd.print("Wheels");
+  lcd.setCursor(15,3);
+  lcd.print("RPM");
+}
+
+void loop() 
+{
+  ElecInputSpeed = analogRead(SpeedSensorElec);
+  ElecMotorSpeedForwards = map(ElecInputSpeed,879,0,0,200);
+  ElecMotorSpeedReverse = map(ElecInputSpeed,880,1023,0,200);
+  
+  PetrolInputSpeed = analogRead(SpeedSensorPetrol);
+  PetrolInputSpeed = map(PetrolInputSpeed,1024,0,0,200);
+  
+  // Enable these for tuning (don' forget the "Serial.println" for the last one)
+  Serial.print ("  Electrical Input Speed Value "); Serial.print (ElecInputSpeed);
+  //Serial.print ("  Electrical Motor Value "); Serial.print (ElecMotorSpeed);
+  //Serial.print ("  Electrical Brake Value "); Serial.print (digitalRead (ElecBrake));
+  //Serial.print ("  Electrical Dir Value "); Serial.print (digitalRead (ElecDir));
+  //Serial.print ("  Petrol Input Speed Value "); Serial.print (PetrolInputSpeed);
+  //Serial.print ("  Petrol Motor Value "); Serial.print (PetrolMotorSpeed);
+  //Serial.print ("  Petrol Brake Value "); Serial.print(digitalRead (PetrolBrake));
+  //Serial.print ("  Petrol Dir Value "); Serial.print(digitalRead (PetrolDir));
+  //Serial.print ("  Petrol Road Speed "); Serial.print(PetrolRoadSpeed);
+  Serial.print ("  Elec Road Speed For "); Serial.print(ElecRoadSpeedFor);
+  Serial.print ("  Elec Road Speed Rev "); Serial.print(ElecRoadSpeedRev);
+  Serial.print ("  Road Speed Value ");Serial.println (RoadSpeedVal);
+
+  // Electrical Forwards
+if (ElecInputSpeed < 879)                            // Tune this to suit
+   {
+    ElecRoadSpeedFor=(PetrolInputSpeed*(RingGearTeeth+SunGearTeeth)-(ElecMotorSpeedForwards*(-1))*SunGearTeeth)/RingGearTeeth;
+                                                                          // (*(-1)) Because Elec Motor is in reverse direction
+    forward(ElecMotorSpeedForwards);
+   }
+   // Electrical Reverse
+   else if (ElecInputSpeed > 880)                     // Tune this to suit
+   {
+    ElecRoadSpeedRev=(PetrolInputSpeed*(RingGearTeeth+SunGearTeeth)-(ElecMotorSpeedReverse*SunGearTeeth)/RingGearTeeth);
+    reverse(ElecMotorSpeedReverse);
+   }
+  else
+   { 
+   brake();
+   lcd.setCursor(10,3);
+   lcd.print("    ");
+   lcd.setCursor(10,3);
+   lcd.print("0   ");
+   }
+   
+  RoadSpeedVal = (PetrolRoadSpeed + ElecRoadSpeedFor + ElecRoadSpeedRev);
+    lcd.setCursor(10,3);
+    lcd.print("    ");
+    lcd.setCursor(10,3);
+    lcd.print(RoadSpeedVal);
+
+ //Petrol Engine
+if (PetrolInputSpeed > 0 && PetrolInputSpeed < 205)
+  {
+    digitalWrite(PetrolBrake, LOW); // Turn ON Motor
+    digitalWrite(PetrolDir, LOW);   // Forwards
+    PetrolMotorSpeed = map(PetrolInputSpeed,0,200,80,200);// Tune this to suit
+    analogWrite(PetrolSpeed, PetrolMotorSpeed);
+    PetrolRoadSpeed =((PetrolInputSpeed*(RingGearTeeth+SunGearTeeth)-(ElecMotorSpeedForwards*(-1))*SunGearTeeth)/RingGearTeeth);
+                                                                          // (*(-1)) Because Elec Motor is in reverse direction
+    lcd.setCursor(10,2);
+    lcd.print("    ");
+    lcd.setCursor(10,2);
+    lcd.print(PetrolRoadSpeed);
+  }
+    else
+  {
+    digitalWrite(PetrolBrake, HIGH); // Turn OFF Motor
+    lcd.setCursor(10,2);
+    lcd.print("    ");
+    lcd.setCursor(10,2);
+    lcd.print("0   ");
+  }  
+} // end of void loop
+
+ void forward(int ElecMotorSpeed)
+{
+    digitalWrite(ElecBrake, LOW); // Turn ON Motor
+    digitalWrite (ElecDir, LOW);  // Forwards
+    analogWrite(ElecSpeed, ElecMotorSpeed);
+    lcd.setCursor(10,1);
+    lcd.print("     ");
+    lcd.setCursor(10,1);
+    lcd.print(ElecMotorSpeedForwards);
+}
+ 
+ void reverse(int ElecMotorSpeed)
+{
+    digitalWrite(ElecBrake, LOW); // Motor ON
+    digitalWrite (ElecDir, HIGH); // Reverse
+    analogWrite(ElecSpeed, ElecMotorSpeed);
+    lcd.setCursor(10,1);
+    lcd.print("     ");
+    lcd.setCursor(10,1);
+    lcd.print(ElecMotorSpeedReverse);
+}
+
+ void brake()
+{
+     digitalWrite(ElecBrake, HIGH); // Motor OFF
+     digitalWrite(PetrolBrake, HIGH); // Motor OFF
+     RoadSpeedVal = (0);
+     //(RoadSpeedVal = 0);
+}
+ 
